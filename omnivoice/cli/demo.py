@@ -62,6 +62,21 @@ def _silence(seconds: float, sampling_rate: int) -> np.ndarray:
     return np.zeros(int(seconds * sampling_rate), dtype=np.float32)
 
 
+def _pause_between(
+    current_speaker: Optional[int],
+    next_speaker: Optional[int],
+    same_speaker_pause: float,
+    cross_speaker_pause: float,
+) -> float:
+    return (
+        same_speaker_pause
+        if current_speaker is not None
+        and next_speaker is not None
+        and current_speaker == next_speaker
+        else cross_speaker_pause
+    )
+
+
 def _audio_to_int16(waveform_f32: np.ndarray) -> np.ndarray:
     return np.clip(waveform_f32, -1.0, 1.0).astype(np.int16)
 
@@ -86,12 +101,58 @@ def _concat_segments(
             seg = seg.squeeze()
         out_parts.append(seg.astype(np.float32, copy=False))
         if i < len(segments) - 1:
-            if speakers is not None and speakers[i] == speakers[i + 1]:
-                pause = same_speaker_pause
-            else:
-                pause = cross_speaker_pause
+            pause = _pause_between(
+                speakers[i] if speakers is not None else None,
+                speakers[i + 1] if speakers is not None else None,
+                same_speaker_pause,
+                cross_speaker_pause,
+            )
             out_parts.append(_silence(pause, sampling_rate))
     return np.concatenate(out_parts) if len(out_parts) > 1 else out_parts[0]
+
+
+def _srt_timestamp(sample_index: int, sampling_rate: int) -> str:
+    total_ms = sample_index * 1000 // sampling_rate
+    ms = total_ms % 1000
+    total_seconds = total_ms // 1000
+    seconds = total_seconds % 60
+    total_minutes = total_seconds // 60
+    minutes = total_minutes % 60
+    hours = total_minutes // 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{ms:03d}"
+
+
+def _build_srt(
+    texts: List[str],
+    segments: List[np.ndarray],
+    speakers: List[int],
+    sampling_rate: int,
+    same_speaker_pause: float,
+    cross_speaker_pause: float,
+) -> str:
+    cursor = 0
+    blocks: List[str] = []
+    for i, (text, seg) in enumerate(zip(texts, segments)):
+        if seg.ndim > 1:
+            seg = seg.squeeze()
+        start = cursor
+        end = start + len(seg)
+        blocks.append(
+            f"{i + 1}\n"
+            f"{_srt_timestamp(start, sampling_rate)} --> "
+            f"{_srt_timestamp(end, sampling_rate)}\n"
+            f"{text}"
+        )
+        cursor = end
+        if i < len(segments) - 1:
+            pause = _pause_between(
+                speakers[i],
+                speakers[i + 1],
+                same_speaker_pause,
+                cross_speaker_pause,
+            )
+            cursor += int(pause * sampling_rate)
+    return "\n\n".join(blocks) + "\n"
 
 
 def _wav_bytes(waveform_f32: np.ndarray, sampling_rate: int) -> bytes:
@@ -752,6 +813,10 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                             label="Download WAV / 下载",
                             interactive=False,
                         )
+                        sc_srt_dl = gr.File(
+                            label="Download SRT / 下载字幕",
+                            interactive=False,
+                        )
                         sc_status = gr.Textbox(
                             label="Status / 状态", lines=4
                         )
@@ -881,11 +946,12 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                         return (
                             None,
                             None,
+                            None,
                             "Please click 'Parse Script' first.",
                         )
                     items = parse_script(text)
                     if not items:
-                        return None, None, "No valid #N\\t<text> lines found."
+                        return None, None, None, "No valid #N\\t<text> lines found."
 
                     # slot_values = flat list of 3*MAX_SPK values
                     #   per slot: (mode, ref_audio, ref_text)
@@ -982,6 +1048,7 @@ Create speech from text, clone voices from reference audio, and generate multi-s
 
                     segments: List[np.ndarray] = []
                     speaker_seq: List[int] = []
+                    caption_texts: List[str] = []
                     prompt_cache: Dict[int, Any] = {}
 
                     # Batch LLM normalize — 1 round-trip per script instead of N.
@@ -1167,6 +1234,7 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                             seg = audio[0].astype(np.float32)
                             segments.append(seg)
                             speaker_seq.append(spk)
+                            caption_texts.append(item["text"])
                             progress_lines.append(
                                 f"[line {idx+1}] speaker #{spk}: ok ({len(seg)} samples)"
                             )
@@ -1180,14 +1248,17 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                         return (
                             None,
                             None,
+                            None,
                             "No audio produced.\n" + "\n".join(progress_lines),
                         )
 
+                    same_speaker_pause = 0.25
+                    cross_speaker_pause = 0.7
                     final = _concat_segments(
                         segments,
                         sampling_rate,
-                        same_speaker_pause=0.25,
-                        cross_speaker_pause=0.7,
+                        same_speaker_pause=same_speaker_pause,
+                        cross_speaker_pause=cross_speaker_pause,
                         speakers=speaker_seq,
                     )
                     waveform = (final * 32767).astype(np.int16)
@@ -1195,18 +1266,33 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                     tmp_path = os.path.join(
                         os.getcwd(), f"voice_script_{int(os.times()[4])}.wav"
                     )
-                    # Persist a temp WAV for download.
+                    # Persist temp files for download.
                     try:
                         import soundfile as sf
                         sf.write(tmp_path, final, sr_out)
                         wav_dl = tmp_path
                     except Exception:
                         wav_dl = None
+                    try:
+                        srt_path = os.path.splitext(tmp_path)[0] + ".srt"
+                        srt = _build_srt(
+                            caption_texts,
+                            segments,
+                            speaker_seq,
+                            sampling_rate,
+                            same_speaker_pause,
+                            cross_speaker_pause,
+                        )
+                        with open(srt_path, "w", encoding="utf-8-sig") as f:
+                            f.write(srt)
+                        srt_dl = srt_path
+                    except Exception:
+                        srt_dl = None
                     status = (
                         f"Generated {len(segments)}/{len(items)} line(s).\n"
                         + "\n".join(progress_lines[-8:])
                     )
-                    return (sr_out, waveform), wav_dl, status
+                    return (sr_out, waveform), wav_dl, srt_dl, status
 
                 sc_btn.click(
                     _gen_script,
@@ -1224,7 +1310,7 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                         sc_speakers_state,
                     ]
                     + [c for slot in sc_slot_components for c in slot],
-                    outputs=[sc_audio, sc_wav_dl, sc_status],
+                    outputs=[sc_audio, sc_wav_dl, sc_srt_dl, sc_status],
                 )
 
             # ==============================================================
