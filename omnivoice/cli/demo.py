@@ -419,14 +419,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-asr",
         action="store_true",
         default=False,
-        help="Skip loading Whisper ASR model. Reference text auto-transcription"
-        " will be unavailable.",
-    )
-    parser.add_argument(
-        "--asr-model",
-        default="openai/whisper-large-v3-turbo",
-        help="ASR model path or HuggingFace repo id"
-        " (default: openai/whisper-large-v3-turbo).",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--reload",
@@ -1586,7 +1579,7 @@ def _run_activation_loop(args) -> int:
     device = args.device or get_best_device()
     model = OmniVoice.from_pretrained(
         args.model, device_map=device, dtype=torch.float16,
-        load_asr=not args.no_asr, asr_model_name=args.asr_model,
+        load_asr=not args.no_asr,
     )
     try:
         llm_describe()
@@ -1643,7 +1636,6 @@ def main(argv=None) -> int:
             device_map=device,
             dtype=torch.float16,
             load_asr=not args.no_asr,
-            asr_model_name=args.asr_model,
         )
         print("Model loaded.")
 
