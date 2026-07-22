@@ -40,7 +40,7 @@ def main():
 
     if not shutil.which("nuitka"):
         print("Installing Nuitka...")
-        subprocess.check_call([sys.executable, "-m", "uv", "pip", "install", "nuitka", "zstandard"])
+        subprocess.check_call(["uv", "pip", "install", "nuitka", "zstandard"])
 
     # Ensure we"re in project dir (so imports resolve)
     os.chdir(PROJECT)
