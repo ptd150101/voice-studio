@@ -5,6 +5,8 @@ __pycache__/
 *.egg
 dist/
 build/
+.wrangler/
+node_modules/
 .venv/
 .env
 .DS_Store

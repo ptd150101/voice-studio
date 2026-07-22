@@ -38,6 +38,14 @@ import numpy as np
 import torch
 
 from omnivoice import OmniVoice, OmniVoiceGenerationConfig
+
+# License activation (optional — only enforced in Nuitka compiled builds)
+try:
+    from omnivoice._license import activate, check, LicenseState, cache_info, get_hwid
+except ImportError:
+    activate = check = cache_info = get_hwid = None  # type: ignore
+    LicenseState = None  # type: ignore
+
 from omnivoice.cli.llm_normalize import (
     DEFAULTS as llm_defaults,
     describe_config as llm_describe,
@@ -1497,6 +1505,102 @@ def _run_reload(argv: List[str]) -> int:
     return subprocess.call(cmd, env=env)
 
 
+def _activation_ui() -> gr.Blocks:
+    """Gradio activation screen — shown when license is missing/expired."""
+    status_msg = gr.State("")
+    hwid = get_hwid() if get_hwid else ""
+    cache = cache_info() if cache_info else None
+
+    def try_activate(key: str):
+        if not activate:
+            return "License system not available."
+        state, err = activate(key.strip())
+        if state == LicenseState.VALID:
+            return "✅ Kích hoạt thành công! Khởi động lại ứng dụng..."
+        return f"❌ {err}"
+
+    def check_status():
+        if not check:
+            return "License system not available."
+        state, details = check()
+        if state == LicenseState.VALID:
+            days = details.get("days_left", 0)
+            return f"✅ License hoạt động — còn {days} ngày. Khởi động lại ứng dụng..."
+        if state == LicenseState.EXPIRED:
+            return "❌ License đã hết hạn."
+        return "Vui lòng nhập license key."
+
+    with gr.Blocks(title="OmniVoice — Kích hoạt", css=_ACTIVATION_CSS) as ui:
+        gr.Markdown(
+            f"""
+            <div class="act-logo"><strong>🔊 OmniVoice</strong></div>
+            <div class="act-box">
+                <h2>Kích hoạt bản quyền</h2>
+                <p class="act-hwid">Mã máy: <code>{hwid}</code></p>
+                <p>Nhập license key để kích hoạt.</p>
+            </div>
+            """
+        )
+        key_input = gr.Textbox(label="License Key", placeholder="Paste license key...", scale=3)
+        btn = gr.Button("Kích hoạt", variant="primary")
+        msg = gr.Markdown(visible=True)
+        btn.click(fn=try_activate, inputs=key_input, outputs=msg)
+        if cache:
+            gr.Markdown(f"*Đã kích hoạt trước đó — hết hạn: {datetime.fromtimestamp(cache['expires_at']).strftime('%d/%m/%Y')}*")
+    return ui
+
+
+_ACTIVATION_CSS = """
+.act-logo { font-size: 1.8em; text-align: center; margin: 2em 0 1em; }
+.act-box { max-width: 480px; margin: 0 auto; text-align: center; }
+.act-hwid { color: #888; font-size: 0.85em; }
+"""
+
+
+def _run_activation_loop(args) -> int:
+    """Keep showing activation UI until license is valid, then restart."""
+    from datetime import datetime
+    while True:
+        state, details = check()
+        if state == LicenseState.VALID:
+            break
+        ui = _activation_ui()
+        ui.queue().launch(
+            server_name=args.ip,
+            server_port=args.port,
+            share=args.share,
+            root_path=args.root_path,
+        )
+        # After UI closes (activation success), re-check
+        state, details = check()
+        if state == LicenseState.VALID:
+            print("✅ License activated. Starting OmniVoice...")
+            return  # proceed to main app
+        if state == LicenseState.EXPIRED:
+            print("❌ License expired.")
+            return  # give up
+        # Continue loop (user entered wrong key, UI relaunches)
+
+    # License OK — load model + launch real demo
+    logging.info(f"Loading model from {args.model} ...")
+    device = args.device or get_best_device()
+    model = OmniVoice.from_pretrained(
+        args.model, device_map=device, dtype=torch.float16,
+        load_asr=not args.no_asr, asr_model_name=args.asr_model,
+    )
+    try:
+        llm_describe()
+    except Exception:
+        pass
+    demo = build_demo(model, args.model)
+    demo._custom_model = model
+    demo.queue().launch(
+        server_name=args.ip, server_port=args.port,
+        share=args.share, root_path=args.root_path,
+        theme=demo._custom_theme, css=demo._custom_css, js=demo._custom_js,
+    )
+
+
 def main(argv=None) -> int:
     global demo
     logging.basicConfig(
@@ -1511,12 +1615,25 @@ def main(argv=None) -> int:
         raw_argv = [arg for arg in raw_argv if arg != "--reload"]
         return _run_reload(raw_argv)
 
-    device = args.device or get_best_device()
+    # License gate (only in compiled builds)
+    if check is not None and LicenseState is not None:
+        state, details = check()
+        if state in (LicenseState.ACTIVATION_REQUIRED, LicenseState.EXPIRED,
+                     LicenseState.NETWORK_ERROR, LicenseState.CLOCK_TAMPERED):
+            _run_activation_loop(args)
+            return 0
+        # else VALID → continue
+        logging.info("License OK — %d days remaining", details.get("days_left", 0))
+    else:
+        logging.info("License system not active — dev mode, skipping check.")
 
     checkpoint = args.model
     if not checkpoint:
         parser.print_help()
         return 0
+
+    device = args.device or get_best_device()
+
     if _is_gradio_reload_thread() and demo is not None:
         model = demo._custom_model
     else:
@@ -1530,9 +1647,6 @@ def main(argv=None) -> int:
         )
         print("Model loaded.")
 
-    # Create omnivoice.ini with defaults if missing, so users don't have
-    # to open the LLM Settings tab and click Save just to enable LLM
-    # normalization.
     try:
         llm_describe()
         logging.info("LLM config ready at %s", llm_describe().get("path"))

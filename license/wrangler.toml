@@ -1,0 +1,7 @@
+name = "voice-studio"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+
+[[kv_namespaces]]
+binding = "LICENSE_KV"
+id = "4b275ce2b29f457c80b0041a070cefe7"
