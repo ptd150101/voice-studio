@@ -55,7 +55,7 @@ def _collect_data_spec() -> list:
             key = src.parent
             if key not in collected:
                 collected.add(key)
-                datas.append(f"{key};{pkg_dir_name}")
+                datas.append((f"{key}", f"{pkg_dir_name}"))
 
     # Remove duplicates (same source path, different package detection)
     seen = set()
@@ -76,7 +76,7 @@ def main() -> None:
 
     datas = _collect_data_spec()
     # Add the omnivoice package itself
-    datas.append(f"{PROJECT / 'omnivoice'};omnivoice")
+    datas.append((f"{PROJECT / 'omnivoice'}", "omnivoice"))
 
     # Hidden imports
     hidden = [
