@@ -6,15 +6,17 @@ from pathlib import Path
 PROJECT = Path(__file__).resolve().parent.parent
 DIST = PROJECT / "dist_pyinstaller"
 APP_NAME = "voice-studio"
+ENTRY = str(PROJECT / "omnivoice" / "cli" / "demo.py")
 
 
 def main() -> None:
-    print("Building with PyInstaller (folder mode)...\n")
+    print("Building with PyInstaller (one-dir mode)...\n")
 
     if DIST.exists():
         shutil.rmtree(DIST)
 
-    # Generate .spec to control hidden imports and data
+    # Build spec first — then modify it to include the package properly
+    spec_path = DIST / "_build" / f"{APP_NAME}.spec"
     subprocess.check_call([
         sys.executable, "-m", "PyInstaller",
         "--name", APP_NAME,
@@ -22,22 +24,21 @@ def main() -> None:
         "--distpath", str(DIST),
         "--workpath", str(DIST / "_build"),
         "--specpath", str(DIST / "_build"),
-        "--add-data", f"omnivoice{os.pathsep}omnivoice",
+        "--add-data", f"{str(PROJECT / 'omnivoice')};omnivoice",
         "--hidden-import=omnivoice._license",
+        "--hidden-import=omnivoice.models.omnivoice",
+        "--hidden-import=accelerate",
         "--collect-all=torch",
         "--collect-all=gradio",
         "--collect-all=transformers",
         "--collect-all=accelerate",
         "--collect-all=soundfile",
         "--collect-all=librosa",
-        "--collect-submodules=scipy",
-        "--collect-submodules=sklearn",
         "--exclude-module=matplotlib",
         "--exclude-module=test",
         "--exclude-module=pytest",
         "--windowed",
-        "--key", "omniv0ice-build-key",  # AES encrypt bytecode
-        str(PROJECT / "omnivoice" / "cli" / "demo.py"),
+        ENTRY,
     ])
 
     # Copy pyproject for reference
