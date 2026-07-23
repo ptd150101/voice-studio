@@ -13,13 +13,12 @@ ENTRY = PROJECT / "omnivoice" / "cli" / "demo.py"
 APP_NAME = "voice-studio"
 
 
-def build_args(mode: str, jobs: int | None) -> list[str]:
+def build_args(mode: str, jobs: int | None, console: bool) -> list[str]:
     args = [
         sys.executable,
         "-m",
         "nuitka",
         "--standalone",
-        "--windows-console-mode=disable",
         "--company-name=Voice Studio",
         "--product-name=Voice Studio",
         "--file-version=1.0.0",
@@ -36,6 +35,8 @@ def build_args(mode: str, jobs: int | None) -> list[str]:
         f"--output-dir={DIST}",
         f"--output-filename={APP_NAME}.exe",
     ]
+    if not console:
+        args.append("--windows-console-mode=disable")
     if jobs:
         args.append(f"--jobs={jobs}")
     if mode == "onefile":
@@ -54,6 +55,7 @@ def main() -> None:
     )
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--clean", action="store_true", help="delete prior Nuitka outputs before build")
+    parser.add_argument("--console", action="store_true", help="show console window (debug)")
     args = parser.parse_args()
 
     print(f"Building Voice Studio ({args.mode})...")
@@ -69,7 +71,7 @@ def main() -> None:
                 shutil.rmtree(path)
 
     os.chdir(PROJECT)
-    cmd = build_args(args.mode, args.jobs)
+    cmd = build_args(args.mode, args.jobs, args.console)
     print("Command: " + " ".join(str(a) for a in cmd))
     print()
     subprocess.check_call(cmd)
