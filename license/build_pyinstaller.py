@@ -23,30 +23,36 @@ def _collect_data_spec() -> list:
         dist_name = dist.metadata.get("Name", "")
         if not dist_name:
             continue
-        # ignore eggs, zip-installed
-        pkg_dir = site_pkgs / dist_name.replace("-", "_").replace(".", "_")
-        if not pkg_dir.is_dir():
-            # try the original name
-            pkg_dir = site_pkgs / dist_name
-            if not pkg_dir.is_dir():
+        # Resolve the actual top-level package directory(ies)
+        top_level = dist.read_text("top_level.txt") if dist.has_metadata("top_level.txt") else ""
+        pkg_dirs = top_level.strip().splitlines() if top_level else [dist_name.replace("-", "_").replace(".", "_")]
+        # fallback: try the name itself
+        pkg_folders = [p for p in pkg_dirs if (site_pkgs / p).is_dir()]
+        if not pkg_folders:
+            pkg_folders = [dist_name]
+            if not (site_pkgs / dist_name).is_dir():
                 continue
 
         collected = set()
         for f in dist.files or []:
-            # Keep everything that is NOT .py / .pyc / .dist-info
             parts = f.parts
             if any(p.endswith(".dist-info") or p.endswith(".egg-info") for p in parts):
                 continue
-            if f.suffix in (".py", ".pyc", ".pyo", ".pyd"):
+            if f.suffix in (".py", ".pyc", ".pyo"):
                 continue
-            src = pkg_dir / str(f)
-            if not src.exists():
+            # Try each candidate top-level directory
+            src = None
+            for pkg_dir_name in pkg_folders:
+                candidate = site_pkgs / pkg_dir_name / str(f)
+                if candidate.exists():
+                    src = candidate
+                    break
+            if src is None:
                 continue
-            # Destination: relative path inside the package dir
-            key = f.parent
+            key = src.parent
             if key not in collected:
                 collected.add(key)
-                datas.append(f"{pkg_dir / key};{dist_name}")
+                datas.append(f"{key};{pkg_dir_name}")
 
     # Remove duplicates (same source path, different package detection)
     seen = set()
@@ -79,9 +85,10 @@ def main() -> None:
     excludes = ["matplotlib", "test", "pytest", "setuptools"]
 
     # Build spec as string
+    entry_path = str(PROJECT / "omnivoice" / "cli" / "demo.py")
     spec = f"""# -*- mode: python -*-
 a = Analysis(
-    [{PROJECT / 'omnivoice' / 'cli' / 'demo.py'!r}],
+    [{entry_path!r}],
     pathex=[],
     binaries=[],
     datas={datas!r},
