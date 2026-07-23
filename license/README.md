@@ -57,7 +57,7 @@ python admin_gen.py list
 
 Set biến môi trường (hoặc sửa trong file):
 ```bash
-set LICENSE_WORKER_URL=https://omnivoice-license.<your-subdomain>.workers.dev
+set LICENSE_WORKER_URL=https://voice-studio.dnh30701.workers.dev
 set LICENSE_ADMIN_KEY=your-admin-secret
 ```
 
@@ -65,22 +65,31 @@ set LICENSE_ADMIN_KEY=your-admin-secret
 
 ```bash
 # Install Nuitka
-pip install nuitka zstandard
+uv pip install nuitka zstandard
 
-# Build standalone exe (mất 20-60 phút)
-python build_nuitka.py
+# Dev/test build: nhanh hơn, cache tốt, output là folder
+python build_nuitka.py --mode folder
+# Output: dist/voice-studio.dist/voice-studio.exe
 
-# Output: dist/omnivoice-demo.exe (~3-5 GB)
+# Release build: 1 file exe, chậm hơn nhiều
+python build_nuitka.py --mode onefile
+# Output: dist/voice-studio.exe
 ```
+
+### Cache build
+
+- `--mode folder` giữ `dist/voice-studio.build` và `dist/voice-studio.dist` → lần sau đổi ít code build nhanh hơn.
+- Không dùng `--clean` trừ khi build bị lỗi cache.
+- `--mode onefile` luôn mất thêm thời gian gom/nén file lớn.
 
 ### Sửa SERVER_URL trước build
 
 Trong `omnivoice/_license.py`, dòng:
 ```python
-SERVER_URL = "https://omnivoice-license.YOUR-SUBDOMAIN.workers.dev"
+SERVER_URL = "https://voice-studio.dnh30701.workers.dev"
 ```
 
-→ Sửa thành URL worker thật của bạn.
+→ Sửa thành URL worker thật nếu đổi account/subdomain.
 
 ### Yêu cầu máy khách
 - Windows 10/11
