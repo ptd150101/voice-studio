@@ -10,7 +10,6 @@ ENTRY = PROJECT / "omnivoice" / "cli" / "demo.py"
 NUITKA_ARGS = [
     sys.executable, "-m", "nuitka",
     "--standalone",
-    "--onefile",
     "--enable-plugin=torch",
     "--enable-plugin=numpy",
     "--enable-plugin=multiprocessing",
