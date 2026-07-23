@@ -12,7 +12,7 @@ def main():
 
     if not shutil.which("pyarmor"):
         print("Installing PyArmor...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pyarmor"])
+        subprocess.check_call([sys.executable, "-m", "uv", "pip", "install", "pyarmor"])
 
     if DIST.exists():
         shutil.rmtree(DIST)
