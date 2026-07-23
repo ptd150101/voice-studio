@@ -24,7 +24,10 @@ def _collect_data_spec() -> list:
         if not dist_name:
             continue
         # Resolve the actual top-level package directory(ies)
-        top_level = dist.read_text("top_level.txt") if dist.has_metadata("top_level.txt") else ""
+        try:
+            top_level = (Path(dist._path) / "top_level.txt").read_text() if dist._path else ""
+        except Exception:
+            top_level = ""
         pkg_dirs = top_level.strip().splitlines() if top_level else [dist_name.replace("-", "_").replace(".", "_")]
         # fallback: try the name itself
         pkg_folders = [p for p in pkg_dirs if (site_pkgs / p).is_dir()]
