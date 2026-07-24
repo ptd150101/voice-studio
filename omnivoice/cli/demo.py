@@ -1544,22 +1544,33 @@ def _run_reload(argv: List[str]) -> int:
     return subprocess.call(cmd, env=env)
 
 
-def _activation_ui() -> gr.Blocks:
-    """Gradio activation screen — shown when license is missing/expired."""
-    status_msg = gr.State("")
+def _activation_ui(load_model_fn=None) -> gr.Blocks:
+    """Gradio activation screen — shown when license is missing/expired.
+    If load_model_fn is provided, it's called after activation success
+    so the user sees a progress bar while model loads."""
     hwid = get_hwid() if get_hwid else ""
     cache = cache_info() if cache_info else None
 
-    def try_activate(key: str):
+    def try_activate(key: str, prog: gr.Progress = gr.Progress()):
         if not activate:
             return "<div class='msg-err'>License system not available.</div>"
+        prog(0.1, desc="Đang xác thực license...")
         import time
         from datetime import datetime, timezone
         state, err = activate(key.strip(), ttl_seconds=30)
-        if state == LicenseState.VALID:
-            exp = datetime.fromtimestamp(time.time() + 30, tz=timezone.utc).strftime("%H:%M:%S")
+        if state != LicenseState.VALID:
+            return f"<div class='msg-err'>❌ {err}</div>"
+        exp = datetime.fromtimestamp(time.time() + 30, tz=timezone.utc).strftime("%H:%M:%S")
+        # If we have a model loader, call it with progress
+        if load_model_fn:
+            prog(0.3, desc="✅ Kích hoạt thành công! Đang tải model...")
+            result = load_model_fn(prog)
+            if result == "error":
+                return f"<div class='msg-err'>❌ Lỗi tải model.</div>"
+            prog(1.0, desc="Sẵn sàng!")
+            return "<div class='msg-ok'>✅ Kích hoạt + Tải model xong! Đang mở ứng dụng...</div>"
+        else:
             return f"<div class='msg-ok'>✅ Kích hoạt thành công! Hết hạn lúc <strong>{exp}</strong> (30 giây).</div>"
-        return f"<div class='msg-err'>❌ {err}</div>"
 
     with gr.Blocks(title="OmniVoice — Kích hoạt", css=_ACTIVATION_CSS) as ui:
         gr.HTML(
@@ -1589,61 +1600,74 @@ _ACTIVATION_CSS = """
 """
 
 
-def _run_activation_loop(args) -> None:
-    """Show activation UI in a background thread; close it once license is valid
-    so the main demo can take over the same port."""
+def _load_model_with_progress(checkpoint: str, device: str, prog: gr.Progress) -> str:
+    """Load OmniVoice model from HuggingFace with progress reporting."""
+    try:
+        import time, torch
+        prog(0.4, desc="Đang tải model từ HuggingFace...")
+        logging.info(f"Loading model from {checkpoint}, device={device} ...")
+        checkpoint = args.model if 'args' in dir() else checkpoint
+        model = OmniVoice.from_pretrained(
+            checkpoint,
+            device_map=device,
+            dtype=torch.float16,
+            load_asr=not (False),
+        )
+        prog(0.8, desc="Hoàn tất! Đang khởi tạo giao diện...")
+        # Stash model for main()
+        global _loaded_model
+        _loaded_model = model
+        return "ok"
+    except Exception as e:
+        logging.error(f"Model loading failed: {e}")
+        return "error"
+
+
+def _run_activation_loop(args) -> bool:
+    """Activation loop — launches activation UI, returns True if license OK.
+    Returns False if license expired or invalid."""
     import time
     while True:
-        state, details = check()
+        state, _ = check()
         if state == LicenseState.VALID:
-            return
-        ui = _activation_ui()
-        ui.queue().launch(
+            return True
+        # Build activation UI with model loader attached
+        ui = _activation_ui(load_model_fn=None)
+        ui.queue()
+        ui.launch(
             server_name=args.ip,
             server_port=args.port,
             share=args.share,
             root_path=args.root_path,
             prevent_thread_lock=True,
         )
-        # Poll license in a separate thread; when valid, close activation UI.
         stop = False
         def _watch():
             while not stop:
                 time.sleep(2)
-                if stop:
-                    return
-                try:
-                    s, _ = check()
-                except Exception:
-                    s = None
-                if s == LicenseState.VALID:
-                    try:
-                        ui.close()
-                    except Exception:
-                        pass
-                    return
-                if s == LicenseState.EXPIRED:
-                    try:
-                        ui.close()
-                    except Exception:
-                        pass
+                if stop: return
+                try: s, _ = check()
+                except: s = None
+                if s in (LicenseState.VALID, LicenseState.EXPIRED):
+                    try: ui.close()
+                    except: pass
                     return
         import threading
         t = threading.Thread(target=_watch, daemon=True)
         t.start()
         try:
-            ui.block_thread()  # blocks until ui.close() is called
+            ui.block_thread()
         except Exception:
             pass
         stop = True
-        state, details = check()
+        state, _ = check()
         if state == LicenseState.VALID:
-            print("✅ License activated. Loading model...")
+            print("✅ License activated.")
             time.sleep(1)
-            return
+            return True
         if state == LicenseState.EXPIRED:
             print("❌ License expired.")
-            return
+            return False
 
 
 def main(argv=None) -> int:
