@@ -1468,6 +1468,20 @@ Create speech from text, clone voices from reference audio, and generate multi-s
     demo._custom_theme = theme
     demo._custom_css = css
     demo._custom_js = js
+
+    # Page-load check: kill if expired
+    def _page_load_check():
+        try:
+            if check is not None and LicenseState is not None:
+                s, _ = check()
+                if s == LicenseState.EXPIRED:
+                    os.abort()
+        except Exception:
+            pass
+        return ""
+    _ = gr.Textbox(value=None, visible=False)
+    demo.load(fn=_page_load_check, outputs=_)
+
     return demo
 
 
