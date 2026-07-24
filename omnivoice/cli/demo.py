@@ -1590,8 +1590,9 @@ _ACTIVATION_CSS = """
 
 
 def _run_activation_loop(args) -> None:
-    """Show activation UI and block until license is valid."""
-    from datetime import datetime
+    """Show activation UI in a background thread; close it once license is valid
+    so the main demo can take over the same port."""
+    import time
     while True:
         state, details = check()
         if state == LicenseState.VALID:
@@ -1602,10 +1603,43 @@ def _run_activation_loop(args) -> None:
             server_port=args.port,
             share=args.share,
             root_path=args.root_path,
+            prevent_thread_lock=True,
         )
+        # Poll license in a separate thread; when valid, close activation UI.
+        stop = False
+        def _watch():
+            while not stop:
+                time.sleep(2)
+                if stop:
+                    return
+                try:
+                    s, _ = check()
+                except Exception:
+                    s = None
+                if s == LicenseState.VALID:
+                    try:
+                        ui.close()
+                    except Exception:
+                        pass
+                    return
+                if s == LicenseState.EXPIRED:
+                    try:
+                        ui.close()
+                    except Exception:
+                        pass
+                    return
+        import threading
+        t = threading.Thread(target=_watch, daemon=True)
+        t.start()
+        try:
+            ui.block_thread()  # blocks until ui.close() is called
+        except Exception:
+            pass
+        stop = True
         state, details = check()
         if state == LicenseState.VALID:
             print("✅ License activated. Loading model...")
+            time.sleep(1)
             return
         if state == LicenseState.EXPIRED:
             print("❌ License expired.")
