@@ -1469,20 +1469,23 @@ Create speech from text, clone voices from reference audio, and generate multi-s
     demo._custom_css = css
     demo._custom_js = js
 
-    # Page-load check: kill if expired
-    def _page_load_check():
-        try:
-            if check is not None and LicenseState is not None:
-                s, _ = check()
-                if s == LicenseState.EXPIRED:
-                    os.abort()
-        except Exception:
-            pass
-        return ""
-    _ = gr.Textbox(value=None, visible=False)
-    demo.load(fn=_page_load_check, outputs=_)
+    # Page-load check: kill if expired (inside blocks context)
+    _exp_check = gr.Textbox(value=None, visible=False)
+    demo.load(fn=_page_load_check, outputs=_exp_check)
 
     return demo
+
+
+def _page_load_check():
+    """Called when the page is loaded — kills process if license expired."""
+    try:
+        if check is not None and LicenseState is not None:
+            s, _ = check()
+            if s == LicenseState.EXPIRED:
+                os.abort()
+    except Exception:
+        pass
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -1567,39 +1570,43 @@ _ACTIVATION_CSS = """
 """
 
 
-def _load_model_with_progress(checkpoint: str, device: str, prog: gr.Progress) -> str:
-    """Load OmniVoice model from HuggingFace with progress reporting."""
-    try:
-        import time, torch
-        prog(0.4, desc="Đang tải model từ HuggingFace...")
-        logging.info(f"Loading model from {checkpoint}, device={device} ...")
-        checkpoint = args.model if 'args' in dir() else checkpoint
-        model = OmniVoice.from_pretrained(
-            checkpoint,
-            device_map=device,
-            dtype=torch.float16,
-            load_asr=not (False),
-        )
-        prog(0.8, desc="Hoàn tất! Đang khởi tạo giao diện...")
-        # Stash model for main()
-        global _loaded_model
-        _loaded_model = model
-        return "ok"
-    except Exception as e:
-        logging.error(f"Model loading failed: {e}")
-        return "error"
+_loaded_model = None  # shared between activation UI and main()
 
 
 def _run_activation_loop(args) -> bool:
-    """Activation loop — launches activation UI, returns True if license OK.
-    Returns False if license expired or invalid."""
-    import time
+    """Activation loop — launches activation UI, loads model in between.
+    Returns True if license OK (model available in _loaded_model).
+    Returns False if license expired."""
+    import time, threading
+
+    def _make_loader(checkpoint, device):
+        """Return callable for progress bar inline model loading."""
+        import torch
+        def _load(prog: gr.Progress):
+            try:
+                prog(0.4, desc="Đang tải model từ HuggingFace...")
+                logging.info(f"Loading model from {checkpoint}, device={device} ...")
+                global _loaded_model
+                _loaded_model = OmniVoice.from_pretrained(
+                    checkpoint, device_map=device, dtype=torch.float16,
+                    load_asr=not args.no_asr,
+                )
+                prog(0.8, desc="Hoàn tất! Đang khởi tạo giao diện...")
+                return "ok"
+            except Exception as e:
+                logging.error(f"Model load failed: {e}")
+                return "error"
+        return _load
+
     while True:
         state, _ = check()
         if state == LicenseState.VALID:
             return True
-        # Build activation UI with model loader attached
-        ui = _activation_ui(load_model_fn=None)
+
+        # Build activation UI with model loading callback
+        device = args.device or get_best_device()
+        loader = _make_loader(args.model, device)
+        ui = _activation_ui(load_model_fn=loader)
         ui.queue()
         ui.launch(
             server_name=args.ip,
@@ -1608,6 +1615,7 @@ def _run_activation_loop(args) -> bool:
             root_path=args.root_path,
             prevent_thread_lock=True,
         )
+
         stop = False
         def _watch():
             while not stop:
@@ -1619,7 +1627,6 @@ def _run_activation_loop(args) -> bool:
                     try: ui.close()
                     except: pass
                     return
-        import threading
         t = threading.Thread(target=_watch, daemon=True)
         t.start()
         try:
@@ -1657,8 +1664,9 @@ def main(argv=None) -> int:
         if state in (LicenseState.ACTIVATION_REQUIRED, LicenseState.EXPIRED,
                      LicenseState.NETWORK_ERROR, LicenseState.CLOCK_TAMPERED):
             _run_activation_loop(args)
-        # else VALID → continue
-        logging.info("License OK — %d days remaining", details.get("days_left", 0))
+            logging.info("License OK — %d days remaining", details.get("days_left", 0))
+        else:
+            logging.info("License OK — %d days remaining", details.get("days_left", 0))
     else:
         logging.info("License system not active — dev mode, skipping check.")
 
@@ -1669,7 +1677,10 @@ def main(argv=None) -> int:
 
     device = args.device or get_best_device()
 
-    if _is_gradio_reload_thread() and demo is not None:
+    global _loaded_model
+    if _loaded_model is not None:
+        model = _loaded_model
+    elif _is_gradio_reload_thread() and demo is not None:
         model = demo._custom_model
     else:
         logging.info(f"Loading model from {checkpoint}, device={device} ...")
