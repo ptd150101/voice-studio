@@ -1507,9 +1507,11 @@ def _activation_ui() -> gr.Blocks:
     def try_activate(key: str):
         if not activate:
             return "<div class='msg-err'>License system not available.</div>"
-        state, err = activate(key.strip())
+        from datetime import datetime, timezone
+        state, err = activate(key.strip(), ttl_seconds=30)
         if state == LicenseState.VALID:
-            return "<div class='msg-ok'>✅ Kích hoạt thành công! Vui lòng đợi... Khởi động lại ứng dụng sau 3 giây.</div>"
+            exp = datetime.fromtimestamp(time.time() + 30, tz=timezone.utc).strftime("%H:%M:%S")
+            return f"<div class='msg-ok'>✅ Kích hoạt thành công! Hết hạn lúc <strong>{exp}</strong> (30 giây).</div>"
         return f"<div class='msg-err'>❌ {err}</div>"
 
     with gr.Blocks(title="OmniVoice — Kích hoạt", css=_ACTIVATION_CSS) as ui:

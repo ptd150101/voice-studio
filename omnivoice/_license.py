@@ -166,9 +166,13 @@ def check():
     return LicenseState.VALID, {**details, "online": True}
 
 
-def activate(license_key: str):
+def activate(license_key: str, ttl_seconds: int = 0):
+    """Activate with a license key. ttl_seconds overrides server-side expiry (testing)."""
     hwid = get_hwid()
-    resp = _post_json(f"{SERVER_URL}/activate", {"license_key": license_key, "hwid": hwid})
+    body = {"license_key": license_key, "hwid": hwid}
+    if ttl_seconds:
+        body["ttl_seconds"] = ttl_seconds
+    resp = _post_json(f"{SERVER_URL}/activate", body)
     if resp is None:
         return LicenseState.NETWORK_ERROR, "Cannot reach license server. Check internet."
     if not resp.get("ok"):
