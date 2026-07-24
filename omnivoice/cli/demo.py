@@ -1553,6 +1553,7 @@ def _activation_ui() -> gr.Blocks:
     def try_activate(key: str):
         if not activate:
             return "<div class='msg-err'>License system not available.</div>"
+        import time
         from datetime import datetime, timezone
         state, err = activate(key.strip(), ttl_seconds=30)
         if state == LicenseState.VALID:
