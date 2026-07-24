@@ -439,7 +439,7 @@ def _periodic_license_check():
     -1 (valid) or 1 (expired) so the hidden #lic-alert element can be
     detected by the existing custom_js mutation observer."""
     try:
-        if check is None:
+        if check is None or LicenseState is None:
             return -1
         state, _ = check()
         if state in (LicenseState.EXPIRED, LicenseState.CLOCK_TAMPERED):
