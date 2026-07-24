@@ -1506,25 +1506,14 @@ def _activation_ui() -> gr.Blocks:
 
     def try_activate(key: str):
         if not activate:
-            return "License system not available."
+            return "<div class='msg-err'>License system not available.</div>"
         state, err = activate(key.strip())
         if state == LicenseState.VALID:
-            return "✅ Kích hoạt thành công! Khởi động lại ứng dụng..."
-        return f"❌ {err}"
-
-    def check_status():
-        if not check:
-            return "License system not available."
-        state, details = check()
-        if state == LicenseState.VALID:
-            days = details.get("days_left", 0)
-            return f"✅ License hoạt động — còn {days} ngày. Khởi động lại ứng dụng..."
-        if state == LicenseState.EXPIRED:
-            return "❌ License đã hết hạn."
-        return "Vui lòng nhập license key."
+            return "<div class='msg-ok'>✅ Kích hoạt thành công! Vui lòng đợi... Khởi động lại ứng dụng sau 3 giây.</div>"
+        return f"<div class='msg-err'>❌ {err}</div>"
 
     with gr.Blocks(title="OmniVoice — Kích hoạt", css=_ACTIVATION_CSS) as ui:
-        gr.Markdown(
+        gr.HTML(
             f"""
             <div class="act-logo"><strong>🔊 OmniVoice</strong></div>
             <div class="act-box">
@@ -1536,10 +1525,11 @@ def _activation_ui() -> gr.Blocks:
         )
         key_input = gr.Textbox(label="License Key", placeholder="Paste license key...", scale=3)
         btn = gr.Button("Kích hoạt", variant="primary")
-        msg = gr.Markdown(visible=True)
+        msg = gr.HTML()
         btn.click(fn=try_activate, inputs=key_input, outputs=msg)
         if cache:
-            gr.Markdown(f"*Đã kích hoạt trước đó — hết hạn: {datetime.fromtimestamp(cache['expires_at']).strftime('%d/%m/%Y')}*")
+            from datetime import datetime
+            gr.HTML(f"<p style='padding:0 1em'><em>Đã kích hoạt trước đó — hết hạn: {datetime.fromtimestamp(cache['expires_at']).strftime('%d/%m/%Y')}</em></p>")
     return ui
 
 
