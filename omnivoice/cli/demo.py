@@ -434,6 +434,20 @@ def build_parser() -> argparse.ArgumentParser:
 # Build demo
 # ---------------------------------------------------------------------------
 
+def _periodic_license_check():
+    """Called by demo.load(every=...) to check licence mid-session. Returns
+    -1 (valid) or 1 (expired) so the hidden #lic-alert element can be
+    detected by the existing custom_js mutation observer."""
+    try:
+        if check is None:
+            return -1
+        state, _ = check()
+        if state in (LicenseState.EXPIRED, LicenseState.CLOCK_TAMPERED):
+            return 1
+        return -1
+    except Exception:
+        return -1
+
 
 def build_demo(
     model: OmniVoice,
@@ -568,6 +582,24 @@ def build_demo(
       });
       setInterval(syncCloneFields, 500);
       syncCloneFields();
+
+      // Monitor license expiry — reload when lic-alert value becomes "1"
+      (function() {
+        var check = function() {
+          var el = document.getElementById('lic-alert');
+          if (el) {
+            var inp = el.querySelector('input');
+            if (inp && inp.value === '1') { location.reload(); return; }
+          }
+          setTimeout(check, 60000);
+        };
+        setTimeout(check, 60000);
+        new MutationObserver(function() {
+          var el = document.getElementById('lic-alert');
+          if (el) { var inp = el.querySelector('input');
+            if (inp && inp.value === '1') location.reload(); }
+        }).observe(document.body, { subtree: true, childList: true });
+      })();
     }
     """
 
@@ -1469,6 +1501,20 @@ Create speech from text, clone voices from reference audio, and generate multi-s
     demo._custom_theme = theme
     demo._custom_css = css
     demo._custom_js = js
+
+    # Periodic license check — every 5 minutes; triggers page reload on expiry
+    try:
+        if check is not None:
+            _license_watch_alert = gr.Number(value=-1, visible=False, elem_id="lic-alert")
+            demo.load(
+                fn=_periodic_license_check,
+                every=300,
+                inputs=None,
+                outputs=[_license_watch_alert],
+            )
+    except Exception:
+        pass
+
     return demo
 
 
@@ -1542,13 +1588,13 @@ _ACTIVATION_CSS = """
 """
 
 
-def _run_activation_loop(args) -> int:
-    """Keep showing activation UI until license is valid, then restart."""
+def _run_activation_loop(args) -> None:
+    """Show activation UI and block until license is valid."""
     from datetime import datetime
     while True:
         state, details = check()
         if state == LicenseState.VALID:
-            break
+            return
         ui = _activation_ui()
         ui.queue().launch(
             server_name=args.ip,
@@ -1556,34 +1602,13 @@ def _run_activation_loop(args) -> int:
             share=args.share,
             root_path=args.root_path,
         )
-        # After UI closes (activation success), re-check
         state, details = check()
         if state == LicenseState.VALID:
-            print("✅ License activated. Starting OmniVoice...")
-            return  # proceed to main app
+            print("✅ License activated. Loading model...")
+            return
         if state == LicenseState.EXPIRED:
             print("❌ License expired.")
-            return  # give up
-        # Continue loop (user entered wrong key, UI relaunches)
-
-    # License OK — load model + launch real demo
-    logging.info(f"Loading model from {args.model} ...")
-    device = args.device or get_best_device()
-    model = OmniVoice.from_pretrained(
-        args.model, device_map=device, dtype=torch.float16,
-        load_asr=not args.no_asr,
-    )
-    try:
-        llm_describe()
-    except Exception:
-        pass
-    demo = build_demo(model, args.model)
-    demo._custom_model = model
-    demo.queue().launch(
-        server_name=args.ip, server_port=args.port,
-        share=args.share, root_path=args.root_path,
-        theme=demo._custom_theme, css=demo._custom_css, js=demo._custom_js,
-    )
+            return
 
 
 def main(argv=None) -> int:
@@ -1606,7 +1631,6 @@ def main(argv=None) -> int:
         if state in (LicenseState.ACTIVATION_REQUIRED, LicenseState.EXPIRED,
                      LicenseState.NETWORK_ERROR, LicenseState.CLOCK_TAMPERED):
             _run_activation_loop(args)
-            return 0
         # else VALID → continue
         logging.info("License OK — %d days remaining", details.get("days_left", 0))
     else:
