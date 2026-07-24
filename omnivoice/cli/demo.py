@@ -434,21 +434,6 @@ def build_parser() -> argparse.ArgumentParser:
 # Build demo
 # ---------------------------------------------------------------------------
 
-def _periodic_license_check():
-    """Called by demo.load(every=...) to check licence mid-session. Returns
-    -1 (valid) or 1 (expired) so the hidden #lic-alert element can be
-    detected by the existing custom_js mutation observer."""
-    try:
-        if check is None or LicenseState is None:
-            return -1
-        state, _ = check()
-        if state in (LicenseState.EXPIRED, LicenseState.CLOCK_TAMPERED):
-            return 1
-        return -1
-    except Exception:
-        return -1
-
-
 def build_demo(
     model: OmniVoice,
     checkpoint: str,
@@ -582,24 +567,6 @@ def build_demo(
       });
       setInterval(syncCloneFields, 500);
       syncCloneFields();
-
-      // Monitor license expiry — reload when lic-alert value becomes "1"
-      (function() {
-        var check = function() {
-          var el = document.getElementById('lic-alert');
-          if (el) {
-            var inp = el.querySelector('input');
-            if (inp && inp.value === '1') { location.reload(); return; }
-          }
-          setTimeout(check, 60000);
-        };
-        setTimeout(check, 60000);
-        new MutationObserver(function() {
-          var el = document.getElementById('lic-alert');
-          if (el) { var inp = el.querySelector('input');
-            if (inp && inp.value === '1') location.reload(); }
-        }).observe(document.body, { subtree: true, childList: true });
-      })();
     }
     """
 
@@ -1501,20 +1468,6 @@ Create speech from text, clone voices from reference audio, and generate multi-s
     demo._custom_theme = theme
     demo._custom_css = css
     demo._custom_js = js
-
-    # Periodic license check — every 5 minutes; triggers page reload on expiry
-    try:
-        if check is not None:
-            _license_watch_alert = gr.Number(value=-1, visible=False, elem_id="lic-alert")
-            demo.load(
-                fn=_periodic_license_check,
-                every=300,
-                inputs=None,
-                outputs=[_license_watch_alert],
-            )
-    except Exception:
-        pass
-
     return demo
 
 
@@ -1722,6 +1675,24 @@ def main(argv=None) -> int:
 
     demo = build_demo(model, checkpoint)
     demo._custom_model = model
+
+    # Background license watcher — every 5 minutes, restart process on expiry
+    if check is not None and LicenseState is not None:
+        def _watch_license():
+            import time as _t
+            while True:
+                _t.sleep(300)
+                try:
+                    s, _ = check()
+                except Exception:
+                    continue
+                if s == LicenseState.EXPIRED:
+                    logging.warning("License expired mid-session. Restarting...")
+                    os.abort()  # triggers Windows error report, then user re-launches
+                    return
+        import threading as _th
+        _t = _th.Thread(target=_watch_license, daemon=True)
+        _t.start()
 
     demo.queue().launch(
         server_name=args.ip,
