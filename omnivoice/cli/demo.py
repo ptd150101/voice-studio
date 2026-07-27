@@ -1464,15 +1464,13 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                             llm_msg,
                         ],
                     )
-    
+        # Page-load check: kill if expired
+        _exp_check = gr.Textbox(value=None, visible=False)
+        demo.load(fn=_page_load_check, outputs=_exp_check)
+
     demo._custom_theme = theme
     demo._custom_css = css
     demo._custom_js = js
-
-    # Page-load check: kill if expired (inside blocks context)
-    _exp_check = gr.Textbox(value=None, visible=False)
-    demo.load(fn=_page_load_check, outputs=_exp_check)
-
     return demo
 
 
