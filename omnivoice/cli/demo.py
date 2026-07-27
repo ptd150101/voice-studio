@@ -1560,7 +1560,7 @@ def _activation_ui(load_model_fn=None) -> gr.Blocks:
             fn=try_activate, inputs=key_input, outputs=msg,
         ).then(
             fn=None, inputs=None, outputs=None,
-            js="() => location.reload()"
+            js="() => setTimeout(() => location.reload(), 2000)"
         )
         if cache:
             from datetime import datetime
