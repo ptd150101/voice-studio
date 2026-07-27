@@ -1536,7 +1536,7 @@ def _activation_ui(load_model_fn=None) -> gr.Blocks:
             if result == "error":
                 return f"<div class='msg-err'>❌ Lỗi tải model.</div>"
             prog(1.0, desc="Sẵn sàng!")
-            return "<div class='msg-ok'>✅ Kích hoạt + Tải model xong! Đang mở ứng dụng...</div>"
+            return "<div class='msg-ok'>✅ Kích hoạt + Tải model xong! Đang mở ứng dụng...</div><script>setTimeout(function(){location.reload()},1500)</script>"
         else:
             return f"<div class='msg-ok'>✅ Kích hoạt thành công! Hết hạn lúc <strong>{exp}</strong> (30 giây).</div>"
 
@@ -1553,7 +1553,7 @@ def _activation_ui(load_model_fn=None) -> gr.Blocks:
         )
         key_input = gr.Textbox(label="License Key", placeholder="Paste license key...", scale=3)
         btn = gr.Button("Kích hoạt", variant="primary")
-        msg = gr.HTML()
+        msg = gr.HTML(sanitize_html=False)
         btn.click(fn=try_activate, inputs=key_input, outputs=msg)
         if cache:
             from datetime import datetime
