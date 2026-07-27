@@ -1527,7 +1527,7 @@ def _activation_ui(load_model_fn=None) -> gr.Blocks:
         from datetime import datetime, timezone
         if not key or not key.strip():
             return "<div class='msg-err'>❌ Vui lòng nhập license key.</div>"
-        state, err = activate(key.strip(), ttl_seconds=30)
+        state, err = activate(key.strip(), ttl_seconds=3600)
         if state != LicenseState.VALID:
             return f"<div class='msg-err'>❌ {err}</div>"
         exp = datetime.fromtimestamp(time.time() + 30, tz=timezone.utc).strftime("%H:%M:%S")
