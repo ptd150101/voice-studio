@@ -1568,7 +1568,8 @@ _ACTIVATION_CSS = """
 """
 
 
-_loaded_model = None  # shared between activation UI and main()
+_loaded_model = None
+_model_loading = False  # True while model is loading inside Gradio event
 
 
 def _run_activation_loop(args) -> bool:
@@ -1582,9 +1583,10 @@ def _run_activation_loop(args) -> bool:
         import torch
         def _load(prog: gr.Progress):
             try:
+                global _model_loading, _loaded_model
+                _model_loading = True
                 prog(0.4, desc="Đang tải model từ HuggingFace...")
                 logging.info(f"Loading model from {checkpoint}, device={device} ...")
-                global _loaded_model
                 _loaded_model = OmniVoice.from_pretrained(
                     checkpoint, device_map=device, dtype=torch.float16,
                     load_asr=not args.no_asr,
@@ -1594,6 +1596,8 @@ def _run_activation_loop(args) -> bool:
             except Exception as e:
                 logging.error(f"Model load failed: {e}")
                 return "error"
+            finally:
+                _model_loading = False
         return _load
 
     while True:
@@ -1601,7 +1605,6 @@ def _run_activation_loop(args) -> bool:
         if state == LicenseState.VALID:
             return True
 
-        # Build activation UI with model loading callback
         device = args.device or get_best_device()
         loader = _make_loader(args.model, device)
         ui = _activation_ui(load_model_fn=loader)
@@ -1622,6 +1625,9 @@ def _run_activation_loop(args) -> bool:
                 try: s, _ = check()
                 except: s = None
                 if s in (LicenseState.VALID, LicenseState.EXPIRED):
+                    # Wait for model to finish loading before closing UI
+                    if _model_loading:
+                        continue
                     try: ui.close()
                     except: pass
                     return
@@ -1633,9 +1639,8 @@ def _run_activation_loop(args) -> bool:
             pass
         stop = True
         state, _ = check()
-        if state == LicenseState.VALID:
-            print("✅ License activated.")
-            time.sleep(1)
+        if state == LicenseState.VALID and _loaded_model is not None:
+            print("✅ License activated. Model loaded.")
             return True
         if state == LicenseState.EXPIRED:
             print("❌ License expired.")
