@@ -1554,9 +1554,23 @@ def _activation_ui(load_model_fn=None) -> gr.Blocks:
         key_input = gr.Textbox(label="License Key", placeholder="Paste license key...", scale=3)
         btn = gr.Button("Kích hoạt", variant="primary")
         msg = gr.HTML(sanitize_html=False)
-        btn.click(fn=try_activate, inputs=key_input, outputs=msg).then(
-            fn=None, inputs=None, outputs=None,
-            js="() => { setTimeout(() => location.reload(), 2000); }"
+        btn.click(
+            fn=try_activate, inputs=key_input, outputs=msg,
+            js="""
+            () => {
+                var count = 0;
+                var iv = setInterval(function() {
+                    count++;
+                    if (count > 120) clearInterval(iv);  // max 120s
+                    fetch('/').then(function(r) {
+                        if (r.ok && r.url.indexOf('7860') > -1) {
+                            clearInterval(iv);
+                            location.reload();
+                        }
+                    }).catch(function(){});
+                }, 1000);
+            }
+            """
         )
         if cache:
             from datetime import datetime
