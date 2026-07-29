@@ -1329,15 +1329,27 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                     llm_enabled = gr.Checkbox(
                         label="Enable LLM normalization", value=False
                     )
+                    llm_preset = gr.Radio(
+                        choices=[
+                            ("OpenCode deepseek-v4-flash-free", "opencode"),
+                            ("OpenAI-compatible (vLLM / TGI / llm.cpp)", "openai"),
+                            ("Custom", "custom"),
+                        ],
+                        value="custom",
+                        label="Preset",
+                        info="Fill API key and adjust other fields as needed.",
+                    )
                     llm_base_url = gr.Textbox(
                         label="Base URL",
                         placeholder="https://opencode.ai/zen/v1",
+                        visible=True,
                     )
                     llm_api_key = gr.Textbox(
                         label="API Key", type="password", placeholder="public"
                     )
                     llm_model = gr.Textbox(
-                        label="Model", placeholder="deepseek-v4-flash-free"
+                        label="Model", placeholder="deepseek-v4-flash-free",
+                        visible=True,
                     )
                     llm_headers = gr.Textbox(
                         label="Extra headers (k: v, k: v)",
@@ -1379,6 +1391,15 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                             "Loaded configuration.",
                         )
     
+                    def _llm_preset_changed(preset: str):
+                        if preset == "opencode":
+                            return (gr.update(value="https://opencode.ai/zen/v1", visible=True),
+                                    gr.update(value="deepseek-v4-flash-free", visible=True))
+                        elif preset == "openai":
+                            return (gr.update(value="http://localhost:8080/v1", visible=True),
+                                    gr.update(value="", visible=True))
+                        return (gr.update(visible=True), gr.update(visible=True))
+
                     def _llm_save_all(
                         enabled, base_url, api_key, model, headers, timeout, system
                     ):
@@ -1393,6 +1414,10 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                         )
                         return "Saved configuration."
     
+                    llm_preset.change(
+                        fn=_llm_preset_changed, inputs=llm_preset,
+                        outputs=[llm_base_url, llm_model],
+                    )
                     llm_save_btn.click(
                         _llm_save_all,
                         inputs=[
