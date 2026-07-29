@@ -46,7 +46,11 @@ _cached_path: Optional[str] = None
 
 
 def _ini_path() -> str:
-    return os.path.join(os.getcwd(), DEFAULT_INI_NAME)
+    config_dir = os.environ.get(
+        "LOCALAPPDATA",
+        os.path.join(os.path.expanduser("~"), ".omnivoice"),
+    )
+    return os.path.join(config_dir, DEFAULT_INI_NAME)
 
 
 def _make_cfg() -> configparser.ConfigParser:
