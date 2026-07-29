@@ -88,27 +88,18 @@ sys.excepthook = _hook
         import configparser
         cfg = configparser.ConfigParser()
         cfg["llm"] = {
-            "enabled": "false",
-            "base_url": "https://opencode.ai/zen/v1",
-            "api_key": "public",
-            "model": "deepseek-v4-flash-free",
-            "extra_headers": "x-opencode-client: desktop",
-            "system_prompt": (
-                "You are a text normalizer for a high-quality text-to-speech system.\n"
-                "Your job is to LIGHTLY format the text — DO NOT rewrite, paraphrase,\n"
-                "shorten, or merge sentences. Keep the speaker's exact words.\n"
-                "Rules:\n"
-                "1. Output the same language as the input — never translate.\n"
-                "2. Expand symbols to spoken form.\n"
-                "3. Insert punctuation that improves prosody.\n"
-                "4. Keep proper nouns verbatim. Do NOT add commentary.\n"
-                "5. Keep the output roughly the same length as the input.\n"
-                "6. Return ONLY the normalized text, no quotes, no prefix."
-            ),
+            "enabled": "true",
+            "base_url": "http://100.75.219.28:20128/v1",
+            "api_key": "sk-3eaa33d61eca1bd0-i57cj6-4204ddb5",
+            "model": "cx/gpt-5.4-mini",
+            "system_prompt": "You are a text normalizer for a high-quality Japanese text-to-speech system.",
             "timeout": "60",
+            "extra_headers": "x-opencode-client: desktop",
+            "show_llm_settings": "false",
         }
         with open(str(ini_path), "w", encoding="utf-8") as f:
             cfg.write(f)
+        print(f"INI: {ini_path}")
         print(f"INI: {ini_path}")
 
     exe = DIST / APP_NAME / f"{APP_NAME}.exe"
