@@ -59,18 +59,40 @@ def list_keys():
 
 
 def revoke(key: str):
-    """Revoke a license key (set revoked=true in KV directly)."""
-    # Worker doesn't have a revoke endpoint - use direct KV manipulation
-    print("Not implemented via Worker. Edit KV manually in Cloudflare Dashboard.")
+    """Revoke a license key via Worker admin API."""
+    if not key:
+        print("Error: --key is required")
+        sys.exit(2)
+    resp = requests.post(
+        f"{WORKER_URL}/admin/revoke",
+        json={"license_key": key},
+        headers={"X-Admin-Key": ADMIN_KEY},
+        timeout=15,
+    )
+    if resp.status_code == 401:
+        print("Error: unauthorized (bad admin key)")
+        sys.exit(1)
+    if resp.status_code == 404:
+        print(f"Error: key not found: {key}")
+        sys.exit(1)
+    if not resp.ok:
+        print(f"Error: {resp.status_code} {resp.text}")
+        sys.exit(1)
+    data = resp.json()
+    if not data.get("ok"):
+        print(f"API error: {data}")
+        sys.exit(1)
+    print(f"Revoked: {key}  revoked_at={datetime.fromtimestamp(data['revoked_at'], tz=timezone.utc).isoformat()}")
 
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Voice Studio License Admin")
-    parser.add_argument("action", choices=["gen", "list"], help="Action")
+    parser.add_argument("action", choices=["gen", "list", "revoke"], help="Action")
     parser.add_argument("--days", type=int, default=30, help="License duration in days")
     parser.add_argument("--count", type=int, default=1, help="Number of keys to generate")
     parser.add_argument("--ttl", type=int, dest="ttl_seconds", default=None, help="TTL in seconds (override days, for testing)")
+    parser.add_argument("--key", dest="license_key", default=None, help="License key to revoke")
     args = parser.parse_args()
 
     if args.action == "gen":
@@ -83,3 +105,5 @@ if __name__ == "__main__":
                 print(f"  (Send this to your customer)")
     elif args.action == "list":
         list_keys()
+    elif args.action == "revoke":
+        revoke(args.license_key)

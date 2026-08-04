@@ -54,7 +54,30 @@ async function handleVerify(req, env) {
   if (data.hwid !== hwid) return json(403, { ok: false, error: "hwid_mismatch" });
   if (now() > data.exp) return json(403, { ok: false, error: "expired" });
 
+  // KV is the source of truth for current license state — re-read the
+  // record so a revoke (or expiry/HWID change) takes effect on tokens
+  // already issued. Without this, a revoked token stays valid until exp.
+  const record = await env.LICENSE_KV.get(`key:${data.key}`, "json");
+  if (!record) return json(403, { ok: false, error: "revoked" });
+  if (record.revoked) return json(403, { ok: false, error: "revoked" });
+  if (now() > record.expires_at) return json(403, { ok: false, error: "expired" });
+  if (record.hwid && record.hwid !== hwid) return json(403, { ok: false, error: "hwid_mismatch" });
+
   return json(200, { ok: true, expires_at: data.exp });
+}
+
+async function handleAdminRevoke(req, env) {
+  if (req.method !== "POST") return json(405, { ok: false, error: "method" });
+  const { license_key } = await req.json();
+  if (!license_key) return json(400, { ok: false, error: "missing_fields" });
+
+  const record = await env.LICENSE_KV.get(`key:${license_key}`, "json");
+  if (!record) return json(404, { ok: false, error: "not_found" });
+
+  record.revoked = true;
+  record.revoked_at = now();
+  await env.LICENSE_KV.put(`key:${license_key}`, JSON.stringify(record));
+  return json(200, { ok: true, revoked: true, revoked_at: record.revoked_at });
 }
 
 async function handleAdminGen(req, env) {
@@ -106,8 +129,9 @@ export default {
     try {
       if (url.pathname.startsWith("/admin/")) {
         if (!adminAuth(req)) return json(401, { ok: false, error: "unauthorized" });
-        if (url.pathname === "/admin/gen")  return handleAdminGen(req, env);
-        if (url.pathname === "/admin/list") return handleAdminList(req, env);
+        if (url.pathname === "/admin/gen")    return handleAdminGen(req, env);
+        if (url.pathname === "/admin/list")   return handleAdminList(req, env);
+        if (url.pathname === "/admin/revoke") return handleAdminRevoke(req, env);
         return json(404, { ok: false, error: "not_found" });
       }
       switch (url.pathname) {

@@ -136,6 +136,7 @@ class LicenseState:
     CLOCK_TAMPERED = "clock_tampered"
     SERVER_ERROR = "server_error"
     NETWORK_ERROR = "network_error"
+    REVOKED = "revoked"
 
 
 def check():
@@ -174,11 +175,13 @@ def check():
         return LicenseState.NETWORK_ERROR, {**details, "error": "cannot reach license server"}
     if not server_resp.get("ok"):
         error = server_resp.get("error", "")
-        if error in ("expired", "bad_signature", "hwid_mismatch"):
+        if error in ("expired", "revoked", "bad_signature", "hwid_mismatch"):
             try:
                 CACHE_FILE.unlink()
             except Exception:
                 pass
+        if error == "revoked":
+            return LicenseState.REVOKED, details
         if error == "expired":
             return LicenseState.EXPIRED, details
         return LicenseState.SERVER_ERROR, {**details, "error": error}

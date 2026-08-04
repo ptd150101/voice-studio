@@ -1501,11 +1501,11 @@ Create speech from text, clone voices from reference audio, and generate multi-s
 
 
 def _page_load_check():
-    """Called when the page is loaded — kills process if license expired."""
+    """Called when the page is loaded — kills process if license expired/revoked."""
     try:
         if check is not None and LicenseState is not None:
             s, _ = check()
-            if s == LicenseState.EXPIRED:
+            if s in (LicenseState.EXPIRED, LicenseState.REVOKED):
                 os.abort()
     except Exception:
         pass
@@ -1657,7 +1657,8 @@ def _run_activation_loop(args) -> bool:
                 if stop: return
                 try: s, _ = check()
                 except: s = None
-                if s in (LicenseState.VALID, LicenseState.EXPIRED):
+                if s in (LicenseState.VALID, LicenseState.EXPIRED,
+                         LicenseState.REVOKED):
                     # Wait for model to finish loading before closing UI
                     if _model_loading:
                         continue
@@ -1678,6 +1679,10 @@ def _run_activation_loop(args) -> bool:
         if state == LicenseState.EXPIRED:
             print("❌ License expired.")
             return False
+        if state == LicenseState.REVOKED:
+            print("❌ License revoked. Nhập key mới.")
+            # loop: clear cache already wiped by check(), re-show activation UI
+            continue
 
 
 def main(argv=None) -> int:
@@ -1698,6 +1703,7 @@ def main(argv=None) -> int:
     if check is not None and LicenseState is not None:
         state, details = check()
         if state in (LicenseState.ACTIVATION_REQUIRED, LicenseState.EXPIRED,
+                     LicenseState.REVOKED,
                      LicenseState.NETWORK_ERROR, LicenseState.CLOCK_TAMPERED):
             _run_activation_loop(args)
             logging.info("License OK — %d days remaining", details.get("days_left", 0))
@@ -1737,12 +1743,14 @@ def main(argv=None) -> int:
     demo = build_demo(model, checkpoint)
     demo._custom_model = model
 
-    # Background license watcher — every 5 minutes, restart process on expiry
+    # Background license watcher — every 60 seconds, restart process on
+    # expiry/revocation. 60s keeps worst-case (with KV eventual consistency)
+    # around 120s instead of 5+ minutes.
     if check is not None and LicenseState is not None:
         def _watch_license():
             import time as _t
             while True:
-                _t.sleep(300)
+                _t.sleep(60)
                 try:
                     s, _ = check()
                 except Exception:
@@ -1750,6 +1758,10 @@ def main(argv=None) -> int:
                 if s == LicenseState.EXPIRED:
                     logging.warning("License expired mid-session. Restarting...")
                     os.abort()  # triggers Windows error report, then user re-launches
+                    return
+                if s == LicenseState.REVOKED:
+                    logging.warning("License revoked mid-session. Restarting...")
+                    os.abort()
                     return
         import threading as _th
         _t = _th.Thread(target=_watch_license, daemon=True)
