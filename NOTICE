@@ -1,0 +1,15 @@
+Voice Studio
+
+This product incorporates software from the OmniVoice project originally
+developed by Xiaomi Corp. (authors: Han Zhu) and contributors, licensed under
+the Apache License, Version 2.0.
+
+Source: https://github.com/k2-fsa/OmniVoice
+Model checkpoint: https://huggingface.co/k2-fsa/OmniVoice
+
+This distribution also includes normalization code derived from Meta Platforms,
+Inc.'s omnilingual-asr project. The original copyright notices, license notices,
+and source references are retained in the corresponding source-file headers.
+
+See LICENSE for the Apache License, Version 2.0. Third-party dependencies bundled
+with the application retain their own license metadata and notices.

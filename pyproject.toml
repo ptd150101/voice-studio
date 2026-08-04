@@ -8,7 +8,7 @@ version = "0.1.5"
 description = "OmniVoice: Towards Omnilingual Zero-Shot Text-to-Speech with Diffusion Language Models"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.10"
+requires-python = ">=3.12,<3.13"
 authors = [{name = "Han Zhu"}]
 keywords = [
     "tts",

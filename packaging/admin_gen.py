@@ -1,4 +1,4 @@
-﻿# OmniVoice License Admin Tool
+﻿# Voice Studio License Admin Tool
 # Gen license key + push to Cloudflare Worker
 
 import json, os, sys
@@ -10,7 +10,9 @@ except ImportError:
     print("Install requests: pip install requests")
     sys.exit(1)
 
-WORKER_URL = os.environ.get("LICENSE_WORKER_URL", "https://omnivoice-license.YOUR-SUBDOMAIN.workers.dev")
+WORKER_URL = os.environ.get(
+    "LICENSE_WORKER_URL", "https://voice-studio.YOUR-SUBDOMAIN.workers.dev"
+)
 ADMIN_KEY = os.environ.get("LICENSE_ADMIN_KEY", "CHANGE-ME-TO-A-RANDOM-STRING")
 
 
@@ -64,7 +66,7 @@ def revoke(key: str):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="OmniVoice License Admin")
+    parser = argparse.ArgumentParser(description="Voice Studio License Admin")
     parser.add_argument("action", choices=["gen", "list"], help="Action")
     parser.add_argument("--days", type=int, default=30, help="License duration in days")
     parser.add_argument("--count", type=int, default=1, help="Number of keys to generate")

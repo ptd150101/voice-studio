@@ -1,4 +1,4 @@
-"""Build OmniVoice with Nuitka."""
+"""Build Voice Studio with Nuitka."""
 
 import argparse
 import os
@@ -85,6 +85,12 @@ def main() -> None:
         print(f"\nSUCCESS: {exe}")
     if exe.exists():
         print(f"Size: {exe.stat().st_size / 1024 / 1024:.1f} MB")
+
+    output_dir = exe.parent
+    for legal_name in ("LICENSE", "NOTICE"):
+        legal_src = PROJECT / legal_name
+        if legal_src.exists():
+            shutil.copy2(legal_src, output_dir / legal_name)
 
 
 if __name__ == "__main__":

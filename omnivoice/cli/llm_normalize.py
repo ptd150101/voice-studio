@@ -1,7 +1,7 @@
-"""OpenAI-compatible LLM text normalization for OmniVoice TTS.
+"""OpenAI-compatible LLM text normalization for Voice Studio TTS.
 
-Reads/writes a small INI config in the script's CWD (omnivoice.ini),
-and exposes a `normalize_text` helper used by the Gradio demo.
+Reads/writes ``voice-studio.ini`` beside the executable and exposes a
+``normalize_text`` helper used by the Gradio demo.
 """
 
 import configparser
@@ -14,15 +14,15 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INI_NAME = "omnivoice.ini"
+DEFAULT_INI_NAME = "voice-studio.ini"
 
 # Default endpoint & model — override via INI / UI.
 DEFAULTS = {
     "enabled": "false",
     "base_url": "https://opencode.ai/zen/v1",
-    "api_key": "public",
+    "api_key": "",
     "model": "deepseek-v4-flash-free",
-    "extra_headers": "x-opencode-client: desktop",
+    "extra_headers": "",
     "system_prompt": (
         "You are a text normalizer for a high-quality text-to-speech system.\n"
         "Your job is to LIGHTLY format the text — DO NOT rewrite, paraphrase,\n"
@@ -65,6 +65,13 @@ def load_config(
     with _lock:
         if _cache is not None and _cached_path == p and not force_reload:
             return _cache
+        # ponytail: migrate the pre-rebrand INI; remove after one release cycle.
+        legacy = os.path.join(os.path.dirname(p), "omnivoice.ini")
+        if path is None and not os.path.exists(p) and os.path.exists(legacy):
+            try:
+                os.replace(legacy, p)
+            except OSError as e:
+                logger.warning("Could not migrate legacy INI %s: %s", legacy, e)
         cfg = _make_cfg()
         file_exists = os.path.exists(p)
         if file_exists:
@@ -179,16 +186,13 @@ def normalize_text(text: str, path: Optional[str] = None) -> str:
         timeout = float(cfg["llm"].get("timeout", DEFAULTS["timeout"]))
     except ValueError:
         timeout = 60.0
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    headers = {"Content-Type": "application/json"}
+    # Authorization is optional: OpenCode Zen free models need no API key.
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     raw_headers = cfg["llm"].get("extra_headers", "")
-    # Decide whether to attach extra_headers:
-    #  - If user customized the field, send it.
-    #  - Else, auto-add opencode.ai defaults if the base_url is opencode.
     if raw_headers and raw_headers != DEFAULTS["extra_headers"]:
         for k, v in _parse_headers(raw_headers):
-            headers[k] = v
-    elif "opencode.ai" in base_url:
-        for k, v in _parse_headers(DEFAULTS["extra_headers"]):
             headers[k] = v
 
     payload = {
@@ -254,16 +258,13 @@ def normalize_batch(texts: List[str], path: Optional[str] = None) -> List[str]:
         timeout = float(cfg["llm"].get("timeout", DEFAULTS["timeout"]))
     except ValueError:
         timeout = 60.0
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-    # Decide whether to attach extra_headers:
-    #  - If user customized the field, send it.
-    #  - Else, auto-add opencode.ai defaults if the base_url is opencode.
+    headers = {"Content-Type": "application/json"}
+    # Authorization is optional: OpenCode Zen free models need no API key.
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     raw_headers = cfg["llm"].get("extra_headers", "")
     if raw_headers and raw_headers != DEFAULTS["extra_headers"]:
         for k, v in _parse_headers(raw_headers):
-            headers[k] = v
-    elif "opencode.ai" in base_url:
-        for k, v in _parse_headers(DEFAULTS["extra_headers"]):
             headers[k] = v
 
     system_prompt = (
@@ -389,7 +390,7 @@ def is_llm_settings_visible(path: Optional[str] = None) -> bool:
     """Return True if the LLM Settings tab should be rendered.
 
     Controlled by the `show_llm_settings` key in [llm]. Defaults to False
-    so the tab is hidden out of the box; users can flip it in omnivoice.ini.
+    so the tab is hidden out of the box; users can flip it in voice-studio.ini.
     """
     cfg = load_config(path)
     return cfg["llm"].get("show_llm_settings", "false").lower() == "true"

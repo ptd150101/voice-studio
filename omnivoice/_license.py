@@ -1,7 +1,7 @@
-﻿# OmniVoice License Client
+﻿# Voice Studio License Client
 # Embedded in compiled exe - verifies subscription online + offline
 
-import json, os, platform, socket, subprocess, sys, time, uuid
+import json, os, platform, shutil, socket, subprocess, sys, time, uuid
 from pathlib import Path
 from typing import Optional
 
@@ -13,8 +13,28 @@ except ImportError:
 
 # Config
 SERVER_URL = "https://voice-studio.dnh30701.workers.dev"
-CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".omnivoice"))
+_CACHE_ROOT = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+CACHE_DIR = _CACHE_ROOT / "voice-studio"
 CACHE_FILE = CACHE_DIR / "license.json"
+LEGACY_CACHE_FILES = (
+    _CACHE_ROOT / "license.json",
+    Path.home() / ".omnivoice" / "license.json",
+)
+
+
+def _migrate_legacy_cache() -> None:
+    """Move the pre-rebrand license cache without forcing reactivation."""
+    if CACHE_FILE.exists():
+        return
+    for legacy in LEGACY_CACHE_FILES:
+        if not legacy.exists():
+            continue
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(legacy, CACHE_FILE)
+        except OSError:
+            pass
+        return
 MAX_CLOCK_DRIFT = 3600
 NTP_SERVERS = ["pool.ntp.org", "time.google.com", "time.cloudflare.com"]
 
@@ -119,6 +139,7 @@ class LicenseState:
 
 
 def check():
+    _migrate_legacy_cache()
     hwid = get_hwid()
     details = {"hwid": hwid}
 
@@ -203,6 +224,7 @@ def clear_cache():
 
 
 def cache_info() -> Optional[dict]:
+    _migrate_legacy_cache()
     if not CACHE_FILE.exists():
         return None
     try:

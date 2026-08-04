@@ -82,25 +82,40 @@ sys.excepthook = _hook
     # Clean up hook
     hook_path.unlink(missing_ok=True)
 
-    # Generate default INI alongside the exe
-    ini_path = DIST / APP_NAME / "omnivoice.ini"
+    # Generate customer config from build-time environment variables.
+    ini_path = DIST / APP_NAME / "voice-studio.ini"
     if not ini_path.exists():
         import configparser
         cfg = configparser.ConfigParser()
         cfg["llm"] = {
-            "enabled": "true",
-            "base_url": "http://100.75.219.28:20128/v1",
-            "api_key": "sk-3eaa33d61eca1bd0-i57cj6-4204ddb5",
-            "model": "cx/gpt-5.4-mini",
-            "system_prompt": "You are a text normalizer for a high-quality Japanese text-to-speech system.",
-            "timeout": "60",
-            "extra_headers": "x-opencode-client: desktop",
-            "show_llm_settings": "false",
+            "enabled": os.environ.get("VOICE_STUDIO_LLM_ENABLED", "false"),
+            "base_url": os.environ.get(
+                "VOICE_STUDIO_LLM_BASE_URL", "https://opencode.ai/zen/v1"
+            ),
+            "api_key": os.environ.get("VOICE_STUDIO_LLM_API_KEY", ""),
+            "model": os.environ.get(
+                "VOICE_STUDIO_LLM_MODEL", "deepseek-v4-flash-free"
+            ),
+            "system_prompt": os.environ.get(
+                "VOICE_STUDIO_LLM_SYSTEM_PROMPT",
+                "You are a text normalizer for a high-quality text-to-speech system.",
+            ),
+            "timeout": os.environ.get("VOICE_STUDIO_LLM_TIMEOUT", "60"),
+            "extra_headers": os.environ.get(
+                "VOICE_STUDIO_LLM_EXTRA_HEADERS", "x-opencode-client: desktop"
+            ),
+            "show_llm_settings": os.environ.get(
+                "VOICE_STUDIO_SHOW_LLM_SETTINGS", "false"
+            ),
         }
         with open(str(ini_path), "w", encoding="utf-8") as f:
             cfg.write(f)
         print(f"INI: {ini_path}")
-        print(f"INI: {ini_path}")
+
+    for legal_name in ("LICENSE", "NOTICE"):
+        legal_src = PROJECT / legal_name
+        if legal_src.exists():
+            shutil.copy2(legal_src, DIST / APP_NAME / legal_name)
 
     exe = DIST / APP_NAME / f"{APP_NAME}.exe"
     print(f"\nSUCCESS: {exe}")

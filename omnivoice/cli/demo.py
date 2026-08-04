@@ -15,12 +15,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Gradio demo for OmniVoice.
+Gradio demo for Voice Studio.
 
 Supports voice cloning and voice design.
 
 Usage:
-    omnivoice-demo --model /path/to/checkpoint --port 8000
+    voice-studio-demo --model /path/to/checkpoint --port 8000
 """
 
 import argparse
@@ -391,8 +391,8 @@ _ATTR_INFO = {
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="omnivoice-demo",
-        description="Launch a Gradio demo for OmniVoice.",
+        prog="voice-studio-demo",
+        description="Launch the Voice Studio desktop app.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument(
@@ -440,7 +440,7 @@ def build_demo(
     generate_fn=None,
 ) -> gr.Blocks:
 
-    logger = logging.getLogger("omnivoice.demo")
+    logger = logging.getLogger("voice_studio.demo")
     sampling_rate = model.sampling_rate
 
     # -- shared generation core --
@@ -1314,7 +1314,7 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                 )
 
             # ==============================================================
-            # LLM Settings (hidden by default; toggle via `show_llm_settings` in omnivoice.ini)
+            # LLM Settings (hidden by default; toggle via `show_llm_settings` in voice-studio.ini)
             # ==============================================================
             if is_llm_settings_visible():
                 with gr.TabItem("LLM Settings"):
@@ -1345,7 +1345,8 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                         visible=True,
                     )
                     llm_api_key = gr.Textbox(
-                        label="API Key", type="password", placeholder="public"
+                        label="API Key (optional — leave blank for OpenCode free)",
+                        type="password", placeholder=""
                     )
                     llm_model = gr.Textbox(
                         label="Model", placeholder="deepseek-v4-flash-free",
@@ -1353,11 +1354,11 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                     )
                     llm_headers = gr.Textbox(
                         label="Extra headers (k: v, k: v)",
-                        placeholder="x-opencode-client: desktop",
+                        placeholder="",
                         info=(
-                            "Only sent to the server if non-empty and different"
-                            " from the default. Leave blank for standard"
-                            " OpenAI-compatible endpoints."
+                            "Only sent if non-empty. Leave blank for"
+                            " OpenCode Zen free and standard OpenAI-compatible"
+                            " endpoints."
                         ),
                     )
                     llm_timeout = gr.Number(
@@ -1377,7 +1378,7 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                         "Reset system prompt to default / 重置系统提示"
                     )
                     llm_msg = gr.Textbox(label="Result", interactive=False)
-    
+
                     def _llm_load_all():
                         cfg = llm_describe()
                         return (
@@ -1390,7 +1391,7 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                             cfg["system_prompt"],
                             "Loaded configuration.",
                         )
-    
+
                     def _llm_preset_changed(preset: str):
                         if preset == "opencode":
                             return (gr.update(value="https://opencode.ai/zen/v1", visible=True),
@@ -1413,7 +1414,7 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                             timeout=float(timeout or 60),
                         )
                         return "Saved configuration."
-    
+
                     llm_preset.change(
                         fn=_llm_preset_changed, inputs=llm_preset,
                         outputs=[llm_base_url, llm_model],
@@ -1444,7 +1445,7 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                             llm_msg,
                         ],
                     )
-    
+
                     def _llm_reset_prompt(
                         enabled, base_url, api_key, model, headers, timeout, system
                     ):
@@ -1461,7 +1462,7 @@ Create speech from text, clone voices from reference audio, and generate multi-s
                             timeout=float(timeout or 60),
                         )
                         return default_prompt, "Reset prompt and saved configuration."
-    
+
                     llm_reset_btn.click(
                         _llm_reset_prompt,
                         inputs=[
@@ -1567,10 +1568,10 @@ def _activation_ui(load_model_fn=None) -> gr.Blocks:
         else:
             return f"<div class='msg-ok'>✅ Kích hoạt thành công! Hết hạn lúc <strong>{exp}</strong> (30 giây).</div>"
 
-    with gr.Blocks(title="OmniVoice — Kích hoạt", css=_ACTIVATION_CSS) as ui:
+    with gr.Blocks(title="Voice Studio — Kích hoạt", css=_ACTIVATION_CSS) as ui:
         gr.HTML(
             f"""
-            <div class="act-logo"><strong>🔊 OmniVoice</strong></div>
+            <div class="act-logo"><strong>🔊 Voice Studio</strong></div>
             <div class="act-box">
                 <h2>Kích hoạt bản quyền</h2>
                 <p class="act-hwid">Mã máy: <code>{hwid}</code></p>

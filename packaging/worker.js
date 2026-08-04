@@ -1,4 +1,4 @@
-// Cloudflare Worker — OmniVoice License Server
+// Cloudflare Worker — Voice Studio License Server
 // Deploy via: wrangler deploy
 // Requires KV namespace LICENSE_KV
 

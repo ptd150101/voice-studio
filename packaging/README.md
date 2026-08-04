@@ -1,4 +1,4 @@
-﻿# OmniVoice — License & Build System
+﻿# Voice Studio — License & Build System
 
 Hệ thống activation online dùng Cloudflare Worker + KV để quản lý license key theo tháng.
 
@@ -21,7 +21,7 @@ wrangler kv:namespace create LICENSE_KV
 
 Tạo file `wrangler.toml`:
 ```toml
-name = "omnivoice-license"
+name = "voice-studio"
 main = "worker.js"
 compatibility_date = "2026-07-01"
 
@@ -37,7 +37,7 @@ Sửa `ADMIN_SECRET` và `SIGN_KEY` trong `worker.js` thành random string (ít 
 wrangler deploy
 
 # Lấy URL worker
-# -> https://omnivoice-license.<your-subdomain>.workers.dev
+# -> https://voice-studio.<your-subdomain>.workers.dev
 ```
 
 ## 2. Sinh license key
@@ -63,6 +63,21 @@ set LICENSE_ADMIN_KEY=your-admin-secret
 
 ## 3. Build exe cho khách
 
+### Cấu hình LLM lúc build (PowerShell)
+
+Không commit API key vào source. Set biến môi trường trước khi build:
+
+```powershell
+$env:VOICE_STUDIO_LLM_ENABLED="true"
+$env:VOICE_STUDIO_LLM_BASE_URL="https://your-endpoint/v1"
+$env:VOICE_STUDIO_LLM_API_KEY="your-api-key"
+$env:VOICE_STUDIO_LLM_MODEL="your-model"
+$env:VOICE_STUDIO_SHOW_LLM_SETTINGS="false"
+uv run python packaging/build_pyinstaller.py
+```
+
+Nếu không set, build sinh `voice-studio.ini` an toàn với LLM tắt và API key rỗng.
+
 ```bash
 # Install Nuitka
 uv pip install nuitka zstandard
@@ -84,7 +99,7 @@ python build_nuitka.py --mode onefile
 
 ### Sửa SERVER_URL trước build
 
-Trong `omnivoice/_license.py`, dòng:
+Trong client bản quyền nội bộ, dòng:
 ```python
 SERVER_URL = "https://voice-studio.dnh30701.workers.dev"
 ```
@@ -113,12 +128,12 @@ User double-click .exe
 ## Cấu trúc file
 
 ```
-license/
+packaging/
 ├── worker.js          # Cloudflare Worker (deploy lên CF)
-├── client.py          # License client (copy vào omnivoice/_license.py)
+├── client.py          # License client source template
 ├── admin_gen.py       # Tool sinh license key
 ├── build_nuitka.py    # Build .exe
 └── README.md          # File này
-omnivoice/
-├── _license.py        # Copy của client.py (import bởi demo.py)
-└── cli/demo.py        # Có license gate
+internal package/
+├── license client     # Nhúng vào bản build
+└── demo entrypoint    # Có license gate
